@@ -40,6 +40,8 @@
 #define ANALOG_READS 1
 #define VALUE_STAGE_1 1700 // 70 - 1.51V
 #define VALUE_STAGE_2 500 // 110 - 0.64V
+#define HISTERESYS 20 // %
+#define BUFFER_SIZE 5
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -53,8 +55,9 @@
 
 /*  ADC  */
 uint32_t ADCReadings[ANALOG_READS];
-uint32_t anBuff[5];
+uint32_t anBuff[BUFFER_SIZE] = {0};
 bool ADC_Complete = false;
+uint32_t mediaRead = 0;
 
 
 /*  TIMER  */
@@ -68,6 +71,8 @@ uint16_t timer_bfr3 = 0;
 
 uint16_t timer_curr = 0;
 bool relay_status = false;
+
+uint8_t read_cont = 0;
 
 
 
@@ -119,8 +124,8 @@ int main(void)
   MX_ADC1_Init();
   /* USER CODE BEGIN 2 */
   HAL_ADC_Start_DMA(&hadc1, (uint32_t*)&ADCReadings, ANALOG_READS);
-  HAL_GPIO_WritePin(RELAY_SIGNAL_GPIO_Port, RELAY_SIGNAL_Pin, GPIO_PIN_SET);
-  HAL_Delay(300);
+
+  
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -130,52 +135,66 @@ int main(void)
 	  timer_curr = HAL_GetTick();
 
 	  HAL_GPIO_TogglePin(LED_GPIO_Port,LED_Pin);
-	  HAL_Delay(300);
+    HAL_Delay(300);
+	  
 
 	  timer_diff = timer_curr - timer_bfr;
 
-	  if (timer_diff >= 10000){
+	  if (timer_diff >= 100) {
+      HAL_ADC_Start_DMA(&hadc1, (uint32_t*)&ADCReadings, ANALOG_READS);
+
+      if (ADC_Complete) {
+        ADC_Complete = false;
+        HAL_ADC_Stop_DMA(&hadc1);
+
+        // Atualiza anBuff com as últimas leituras do ADC
+        for(int i = 0; i < BUFFER_SIZE - 1; i++) {
+          anBuff[i] = anBuff[i + 1];
+        }
+        anBuff[BUFFER_SIZE - 1] = ADCReadings[0]; // Atualiza com a última leitura
+      }
+      HAL_ADC_Start_DMA(&hadc1, (uint32_t*)&ADCReadings, ANALOG_READS);
+      timer_bfr = timer_curr;
+    }
+
+    // Calcula a média dos valores em anBuff
+    uint32_t sum = 0;
+
+    for (int i = 0; i < BUFFER_SIZE; i++) {
+      sum += anBuff[i];
+    }
+    mediaRead = sum / BUFFER_SIZE;
 
 
-		  if (relay_status){
+    if (mediaRead >= VALUE_STAGE_1 + VALUE_STAGE_1*((HISTERESYS)/100)){
+      relay_status = true;
+    } 
+    else {
+      relay_status = false;
+    }
 
-			  HAL_ADC_Start_DMA(&hadc1, (uint32_t*)&ADCReadings, ANALOG_READS);
+    if (!relay_status){
+      HAL_GPIO_WritePin(RELAY_SIGNAL_GPIO_Port, RELAY_SIGNAL_Pin, GPIO_PIN_RESET);
 
+      timer_diff2 = timer_curr - timer_bfr2;
 
-			  if (ADC_Complete){
+      if (timer_diff2 >= 300){
 
-				  ADC_Complete = false;
-				  HAL_ADC_Stop_DMA(&hadc1);
+        if (mediaRead >= VALUE_STAGE_1 + VALUE_STAGE_1*((HISTERESYS)/100)){
 
-				  if (ADCReadings[0] >= VALUE_STAGE_1) {
-					  HAL_GPIO_WritePin(RELAY_SIGNAL_GPIO_Port, RELAY_SIGNAL_Pin, GPIO_PIN_SET);
-					  relay_status = false;
-				  }
-				  HAL_ADC_Start_DMA(&hadc1, (uint32_t*)&ADCReadings, ANALOG_READS);
-			  }
+          relay_status = true;
 
+        }
 
-		  } else{
+        timer_bfr2 = timer_curr;
+      }
 
-			  if (ADC_Complete){
+    } else{
 
-				  ADC_Complete = false;
-				  HAL_ADC_Stop_DMA(&hadc1);
+      HAL_GPIO_WritePin(RELAY_SIGNAL_GPIO_Port, RELAY_SIGNAL_Pin, GPIO_PIN_SET);
 
-				  if (ADCReadings[0] >= VALUE_STAGE_1) {
-					  HAL_GPIO_WritePin(RELAY_SIGNAL_GPIO_Port, RELAY_SIGNAL_Pin, GPIO_PIN_SET);
-					  relay_status = false;
-				  } else {
-					  HAL_GPIO_WritePin(RELAY_SIGNAL_GPIO_Port, RELAY_SIGNAL_Pin, GPIO_PIN_RESET);
-					  relay_status = true;
-				  }
-
-				  HAL_ADC_Start_DMA(&hadc1, (uint32_t*)&ADCReadings, ANALOG_READS);
-			  }
-		  }
-
-		  timer_bfr = timer_curr;
-	  }
+    }
+		
 
 
 
