@@ -40,8 +40,8 @@
 #define ANALOG_READS 1
 #define VALUE_STAGE_1 1700 // 70 - 1.51V
 #define VALUE_STAGE_2 500 // 110 - 0.64V
-#define HISTERESYS 20 // %
-#define BUFFER_SIZE 5
+#define HISTERESYS 150 //
+#define BUFFER_SIZE 10
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -58,6 +58,7 @@ uint32_t ADCReadings[ANALOG_READS];
 uint32_t anBuff[BUFFER_SIZE] = {0};
 bool ADC_Complete = false;
 uint32_t mediaRead = 0;
+uint8_t buf_cnt = 0;
 
 
 /*  TIMER  */
@@ -123,6 +124,15 @@ int main(void)
   MX_DMA_Init();
   MX_ADC1_Init();
   /* USER CODE BEGIN 2 */
+
+  /*
+   * OBS: Uma breve inicialização com LED piscando para verificar que o controlador foi inicializado.
+   * */
+  for(int i = 0; i < 5; i++) {
+	  HAL_GPIO_TogglePin(LED_GPIO_Port,LED_Pin);
+	  HAL_Delay(200);
+  }
+
   HAL_ADC_Start_DMA(&hadc1, (uint32_t*)&ADCReadings, ANALOG_READS);
 
   
@@ -132,76 +142,72 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-	  timer_curr = HAL_GetTick();
+	  timer_curr = HAL_GetTick(); // OBS: Essa função retorna o valor em millissegundos.
+
 
 	  HAL_GPIO_TogglePin(LED_GPIO_Port,LED_Pin);
-    HAL_Delay(300);
+	  // HAL_Delay(300); // OBS: Esse delay dentro do loop tá travando o seu código por 300ms a cada interação. Isso não se faz!
 	  
 
-	  timer_diff = timer_curr - timer_bfr;
+	  timer_diff = timer_curr - timer_bfr; // OBS: Show! Você inicializou tudo com 0 e como variáveis globais, então vai funcionar.
 
-	  if (timer_diff >= 100) {
-      HAL_ADC_Start_DMA(&hadc1, (uint32_t*)&ADCReadings, ANALOG_READS);
+	  if (timer_diff >= 100) { // OBS: Você executa esse trecho de código a cada aproximadamento 100ms. OK!
+		  HAL_ADC_Start_DMA(&hadc1, (uint32_t*)&ADCReadings, ANALOG_READS); // OBS: Habilita a amostragem do valor das analógicas utilizando DMA. OK!
 
-      if (ADC_Complete) {
-        ADC_Complete = false;
-        HAL_ADC_Stop_DMA(&hadc1);
+		  if (ADC_Complete) {	// OBS: Aguarda até as analógicas serem completamente amostradas e convertidas pelo ADC. OK!
+			  ADC_Complete = false; // OBS: Atualiza a variável de comunicação do loop com a interrupção. OK!
+			  HAL_ADC_Stop_DMA(&hadc1);
 
-        // Atualiza anBuff com as últimas leituras do ADC
-        for(int i = 0; i < BUFFER_SIZE - 1; i++) {
-          anBuff[i] = anBuff[i + 1];
-        }
-        anBuff[BUFFER_SIZE - 1] = ADCReadings[0]; // Atualiza com a última leitura
+
+			// OBS: Só posiciona o valor lido na analógica na posição da leitura mais antiga, e fica rodando essa variável 'buf_cnt'
+			// OBS: Não interessa a posição do valor, no final das contas você vai somar tudo e dividir mesmo.
+			anBuff[buf_cnt] = ADCReadings[0];
+			buf_cnt++;
+			if(buf_cnt == BUFFER_SIZE) {buf_cnt = 0;}
+
+			// OBS: Adicionei a média aqui pois ela somente se altera quando se lê uma nova analógica, logo não faz sentido rodar ela em outro trecho do código
+		    // Calcula a média dos valores em anBuff
+		    uint32_t sum = 0;
+
+		    for (int i = 0; i < BUFFER_SIZE; i++) {
+		      sum += anBuff[i];
+		    }
+		    mediaRead = sum / BUFFER_SIZE;
+
       }
-      HAL_ADC_Start_DMA(&hadc1, (uint32_t*)&ADCReadings, ANALOG_READS);
-      timer_bfr = timer_curr;
+      // HAL_ADC_Start_DMA(&hadc1, (uint32_t*)&ADCReadings, ANALOG_READS); // OBS: Você já está habilitando a amostragem do valor das analógicas lá no inicio a cada 100ms.
+      	  	  	  	  	  	  	  	  	  	  	  	  	  	  	  	  	   // OBS: Habilitando essa amostragem aqui você tá pedindo para o controlador inicializar a leitura e somente irá ler esse valor 100ms depois.
+      	  	  	  	  	  	  	  	  	  	  	  	  	  	  	  	  	   // OBS: Quando você entrar no trecho que roda a cada 100ms o ADC_Complete já vai estar True e com o valor de 100ms atrás.
+      timer_bfr = timer_curr; // OBS: Atualiza o novo valor de timer_bfr somente após completar o código completo que roda em 100ms (Amostragem e Leitura da analógica). OK!
     }
 
-    // Calcula a média dos valores em anBuff
-    uint32_t sum = 0;
 
-    for (int i = 0; i < BUFFER_SIZE; i++) {
-      sum += anBuff[i];
-    }
-    mediaRead = sum / BUFFER_SIZE;
+	timer_diff2 = timer_curr - timer_bfr2; // OBS: Pelo que entendi você vai usar outro conjunto de variáveis para controlar o tempo da outra função. Então vai precisar desse mesmo processo.
+										   // OBS: Daria para fazer usando a mesma variável, mas não importa muito para esse rpograma específico. Podemos fazer assim, sem problemas.
 
+	if (timer_diff2 >= 1000) { // Esse trecho executa a cada 1 segundo. Coloquei 1 segundo e troquei a média movel para 10 valores. BUFFER_SIZE = 10;
 
-    if (mediaRead >= VALUE_STAGE_1 + VALUE_STAGE_1*((HISTERESYS)/100)){
-      relay_status = true;
-    } 
-    else {
-      relay_status = false;
-    }
+	
+		// OBS: Observa como funciona a histerese. Depois que o relé liga quando a temperatura passa do VALUE_STAGE_1, ele só desliga depois que desce pelo menos a histerese dese alvo, senão não faz nada e permanece ligado.
+		if (mediaRead >= VALUE_STAGE_1){
+			relay_status = true; // OBS: Considerei o true como sendo a ventoinha ligada (relé desligado pois estamos usando NC do relé). VERIFICAR A LÓGICA!
+		}
+		else {
+			if(mediaRead <= VALUE_STAGE_1 - HISTERESYS) { // OBS: Coloquei uma observação lá em cima no define da histerese. Colocar um valor fixo e não porcentagem.
+				relay_status = false;
+			}
+		}
 
-    if (!relay_status){
-      HAL_GPIO_WritePin(RELAY_SIGNAL_GPIO_Port, RELAY_SIGNAL_Pin, GPIO_PIN_RESET);
+		// OBS: Aqui atualiza o output do GPIO para acionamento do relé. OK! (Relé desligado é ventoinha ligada pois estamos usando o NC do relé. VERIFICAR A LÓGICA!
+		if (relay_status){
+			HAL_GPIO_WritePin(RELAY_SIGNAL_GPIO_Port, RELAY_SIGNAL_Pin, GPIO_PIN_SET);
+		} else {
+			HAL_GPIO_WritePin(RELAY_SIGNAL_GPIO_Port, RELAY_SIGNAL_Pin, GPIO_PIN_RESET);
+		}
 
-      timer_diff2 = timer_curr - timer_bfr2;
-
-      if (timer_diff2 >= 300){
-
-        if (mediaRead >= VALUE_STAGE_1 + VALUE_STAGE_1*((HISTERESYS)/100)){
-
-          relay_status = true;
-
-        }
-
-        timer_bfr2 = timer_curr;
-      }
-
-    } else{
-
-      HAL_GPIO_WritePin(RELAY_SIGNAL_GPIO_Port, RELAY_SIGNAL_Pin, GPIO_PIN_SET);
-
-    }
-		
+	}
 
 
-
-
-    /* USER CODE END WHILE */
-
-    /* USER CODE BEGIN 3 */
   }
   /* USER CODE END 3 */
 }
