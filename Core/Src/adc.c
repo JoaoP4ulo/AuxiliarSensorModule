@@ -57,7 +57,7 @@ void MX_ADC1_Init(void)
 
   /** Configure Regular Channel
   */
-  sConfig.Channel = ADC_CHANNEL_8;
+  sConfig.Channel = ADC_CHANNEL_0;
   sConfig.Rank = ADC_REGULAR_RANK_1;
   sConfig.SamplingTime = ADC_SAMPLETIME_1CYCLE_5;
   if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
@@ -82,9 +82,9 @@ void HAL_ADC_MspInit(ADC_HandleTypeDef* adcHandle)
     /* ADC1 clock enable */
     __HAL_RCC_ADC1_CLK_ENABLE();
 
-    __HAL_RCC_GPIOB_CLK_ENABLE();
+    __HAL_RCC_GPIOA_CLK_ENABLE();
     /**ADC1 GPIO Configuration
-    PB0     ------> ADC1_IN8
+    PA0-WKUP     ------> ADC1_IN0
     */
     GPIO_InitStruct.Pin = SENSOR_IN_Pin;
     GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
@@ -128,7 +128,7 @@ void HAL_ADC_MspDeInit(ADC_HandleTypeDef* adcHandle)
     __HAL_RCC_ADC1_CLK_DISABLE();
 
     /**ADC1 GPIO Configuration
-    PB0     ------> ADC1_IN8
+    PA0-WKUP     ------> ADC1_IN0
     */
     HAL_GPIO_DeInit(SENSOR_IN_GPIO_Port, SENSOR_IN_Pin);
 

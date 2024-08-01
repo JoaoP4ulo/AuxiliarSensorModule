@@ -59,10 +59,10 @@ void Error_Handler(void);
 /* Private defines -----------------------------------------------------------*/
 #define LED_Pin GPIO_PIN_13
 #define LED_GPIO_Port GPIOC
-#define RELAY_SIGNAL_Pin GPIO_PIN_3
-#define RELAY_SIGNAL_GPIO_Port GPIOA
 #define SENSOR_IN_Pin GPIO_PIN_0
-#define SENSOR_IN_GPIO_Port GPIOB
+#define SENSOR_IN_GPIO_Port GPIOA
+#define RELAY_SIGNAL_Pin GPIO_PIN_0
+#define RELAY_SIGNAL_GPIO_Port GPIOB
 
 /* USER CODE BEGIN Private defines */
 

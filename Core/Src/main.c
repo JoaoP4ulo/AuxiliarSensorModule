@@ -40,7 +40,7 @@
 #define ANALOG_READS 1
 #define VALUE_STAGE_1 1700 // 70 - 1.51V
 #define VALUE_STAGE_2 500 // 110 - 0.64V
-#define HISTERESYS 150 //
+#define HISTERESYS 600 //
 #define BUFFER_SIZE 10
 /* USER CODE END PD */
 
@@ -70,8 +70,10 @@ uint16_t timer_bfr = 0;
 uint16_t timer_bfr2 = 0;
 uint16_t timer_bfr3 = 0;
 
+int point = 0;
+
 uint16_t timer_curr = 0;
-bool relay_status = false;
+bool relay_status = true;
 
 uint8_t read_cont = 0;
 
@@ -132,7 +134,7 @@ int main(void)
 	  HAL_GPIO_TogglePin(LED_GPIO_Port,LED_Pin);
 	  HAL_Delay(200);
   }
-
+  HAL_GPIO_WritePin(RELAY_SIGNAL_GPIO_Port, RELAY_SIGNAL_Pin, GPIO_PIN_SET);
   HAL_ADC_Start_DMA(&hadc1, (uint32_t*)&ADCReadings, ANALOG_READS);
 
   
@@ -147,7 +149,7 @@ int main(void)
 
 	  HAL_GPIO_TogglePin(LED_GPIO_Port,LED_Pin);
 	  // HAL_Delay(300); // OBS: Esse delay dentro do loop tá travando o seu código por 300ms a cada interação. Isso não se faz!
-	  
+
 
 	  timer_diff = timer_curr - timer_bfr; // OBS: Show! Você inicializou tudo com 0 e como variáveis globais, então vai funcionar.
 
@@ -183,20 +185,35 @@ int main(void)
 
 
 	timer_diff2 = timer_curr - timer_bfr2; // OBS: Pelo que entendi você vai usar outro conjunto de variáveis para controlar o tempo da outra função. Então vai precisar desse mesmo processo.
-										   // OBS: Daria para fazer usando a mesma variável, mas não importa muito para esse rpograma específico. Podemos fazer assim, sem problemas.
+	timer_diff3 = timer_curr - timer_bfr3;
+	// OBS: Daria para fazer usando a mesma variável, mas não importa muito para esse rpograma específico. Podemos fazer assim, sem problemas.
 
-	if (timer_diff2 >= 1000) { // Esse trecho executa a cada 1 segundo. Coloquei 1 segundo e troquei a média movel para 10 valores. BUFFER_SIZE = 10;
+	if (timer_diff2 >= 10000) { // Esse trecho executa a cada 1 segundo. Coloquei 1 segundo e troquei a média movel para 10 valores. BUFFER_SIZE = 10;
 
-	
-		// OBS: Observa como funciona a histerese. Depois que o relé liga quando a temperatura passa do VALUE_STAGE_1, ele só desliga depois que desce pelo menos a histerese dese alvo, senão não faz nada e permanece ligado.
-		if (mediaRead >= VALUE_STAGE_1){
-			relay_status = true; // OBS: Considerei o true como sendo a ventoinha ligada (relé desligado pois estamos usando NC do relé). VERIFICAR A LÓGICA!
-		}
-		else {
-			if(mediaRead <= VALUE_STAGE_1 - HISTERESYS) { // OBS: Coloquei uma observação lá em cima no define da histerese. Colocar um valor fixo e não porcentagem.
-				relay_status = false;
+		if (relay_status){
+			// OBS: Observa como funciona a histerese. Depois que o relé liga quando a temperatura passa do VALUE_STAGE_1, ele só desliga depois que desce pelo menos a histerese dese alvo, senão não faz nada e permanece ligado.
+			if (mediaRead > VALUE_STAGE_1 ){
+				point = 1;
+				relay_status = true; // OBS: Considerei o true como sendo a ventoinha ligada (relé desligado pois estamos usando NC do relé). VERIFICAR A LÓGICA!
+
 			}
+			if (mediaRead <= VALUE_STAGE_1 ){
+				relay_status = false;
+				point = 2;
+			}
+
+
+
+		} else {
+			if(!relay_status){
+				if(mediaRead >= VALUE_STAGE_1 + HISTERESYS){
+					relay_status = true;
+					point =3;
+				}
+			}
+
 		}
+
 
 		// OBS: Aqui atualiza o output do GPIO para acionamento do relé. OK! (Relé desligado é ventoinha ligada pois estamos usando o NC do relé. VERIFICAR A LÓGICA!
 		if (relay_status){
@@ -204,6 +221,8 @@ int main(void)
 		} else {
 			HAL_GPIO_WritePin(RELAY_SIGNAL_GPIO_Port, RELAY_SIGNAL_Pin, GPIO_PIN_RESET);
 		}
+
+		timer_bfr2 = timer_curr;
 
 	}
 
